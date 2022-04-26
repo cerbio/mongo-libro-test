@@ -1,0 +1,242 @@
+apiVersion: v1
+kind: Template
+metadata:
+  creationTimestamp: null
+  name: deploy-${REPO_GIT}
+  annotations:
+    openshift.io/display-name: Deploy a web app tomcat springboot from a docker registry
+    description: Deploy a web app tomcat springboot from a docker registry
+    iconClass: icon-jenkins
+    tags: template,deploy,registry,producer,tomcat,springboot
+    version: 1.0.0
+objects:
+- apiVersion: v1
+  kind: Service
+  metadata:
+    creationTimestamp: null
+    labels:
+      tfs-teamproject: ${TFS_TEAMPROJECT}
+      servizio-ict: ${SERVIZIO_ICT}
+      tfs-area: ${TFS_AREA}
+      codice-applicazione: ${CODICE_APPLICAZIONE}
+      env: ${ENV}
+      app: ${REPO_GIT}
+      tag: ${TAG}
+      docker_registry: ${DOCKER_REGISTRY}
+      docker_registry_port: ${DOCKER_REGISTRY_PORT}
+    name: ${REPO_GIT}
+  spec:
+    ports:
+    - name: 9080-tcp
+      port: 9080
+      protocol: TCP
+      targetPort: 9080
+    selector:
+      app: ${REPO_GIT}
+      deploymentconfig: ${REPO_GIT}
+    sessionAffinity: None
+    type: ClusterIP
+- apiVersion: v1
+  kind: Route
+  metadata:
+    creationTimestamp: null
+    labels:
+      tfs-teamproject: ${TFS_TEAMPROJECT}
+      servizio-ict: ${SERVIZIO_ICT}
+      tfs-area: ${TFS_AREA}
+      codice-applicazione: ${CODICE_APPLICAZIONE}
+      env: ${ENV}
+      app: ${REPO_GIT}
+      tag: ${TAG}
+      docker_registry: ${DOCKER_REGISTRY}
+      docker_registry_port: ${DOCKER_REGISTRY_PORT}
+    name: ${REPO_GIT}
+  spec:
+    port:
+      targetPort: 9080-tcp
+    tls:
+      termination: edge
+    to:
+      kind: Service
+      name: ${REPO_GIT}
+- apiVersion: v1
+  kind: ImageStream
+  metadata:
+    creationTimestamp: null
+    labels:
+      tfs-teamproject: ${TFS_TEAMPROJECT}
+      servizio-ict: ${SERVIZIO_ICT}
+      tfs-area: ${TFS_AREA}
+      codice-applicazione: ${CODICE_APPLICAZIONE}
+      env: ${ENV}
+      app: ${REPO_GIT}
+      tag: ${TAG}
+      docker_registry: ${DOCKER_REGISTRY}
+      docker_registry_port: ${DOCKER_REGISTRY_PORT}
+    name: ${REPO_GIT}
+  spec:
+    lookupPolicy:
+      local: false
+    tags:
+    - annotations: null
+      from:
+        kind: DockerImage
+        name: ${DOCKER_REGISTRY}:${DOCKER_REGISTRY_PORT}/${TFS_AREA}/${REPO_GIT}:${TAG}
+      generation: 1
+      importPolicy:
+        insecure: true
+      name: ${TAG}
+      referencePolicy:
+        type: Source
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    creationTimestamp: null
+    labels:
+      tfs-teamproject: ${TFS_TEAMPROJECT}
+      servizio-ict: ${SERVIZIO_ICT}
+      tfs-area: ${TFS_AREA}
+      codice-applicazione: ${CODICE_APPLICAZIONE}
+      env: ${ENV}
+      app: ${REPO_GIT}
+      tag: ${TAG}
+      docker_registry: ${DOCKER_REGISTRY}
+      docker_registry_port: ${DOCKER_REGISTRY_PORT}
+    name: ${REPO_GIT}
+  spec:
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      app: ${REPO_GIT}
+      deploymentconfig: ${REPO_GIT}
+    strategy:
+      type: Rolling
+      rollingParams:
+        intervalSeconds: 1
+        timeoutSeconds: 600
+        updatePeriodSeconds: 1
+        maxSurge: 25%
+        maxUnavailable: 25%
+    template:
+      metadata:
+        creationTimestamp: null
+        labels:
+          tfs-teamproject: ${TFS_TEAMPROJECT}
+          servizio-ict: ${SERVIZIO_ICT}
+          tfs-area: ${TFS_AREA}
+          codice-applicazione: ${CODICE_APPLICAZIONE}
+          env: ${ENV}
+          app: ${REPO_GIT}
+          tag: ${TAG}
+          docker_registry: ${DOCKER_REGISTRY}
+          docker_registry_port: ${DOCKER_REGISTRY_PORT}
+          deploymentconfig: ${REPO_GIT}
+      spec:
+        containers:
+        - image: ${REPO_GIT}:${TAG}
+          imagePullPolicy: IfNotPresent
+          name: ${REPO_GIT}
+          env:
+            - name: "MONGO_USER"
+              valueFrom:
+                secretKeyRef:
+                  key: mongo_user-${REPO_GIT}
+                  name: mongo-secret
+            - name: "MONGO_PASSWORD"
+              valueFrom:
+                secretKeyRef:
+                  key: mongo_password-${REPO_GIT}
+                  name: mongo-secret
+          ports:
+          - containerPort: 9080
+            protocol: TCP
+          resources:
+            limits:
+              cpu: "1000m"
+              memory: "1024Mi"
+            requests:
+              cpu: 500m
+              memory: 512Mi
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /deployments/application.properties
+            name: ${REPO_GIT}-volume
+            subPath: application.properties
+          readinessProbe:
+            httpGet:
+              path: ${APP_READINESSPROBE_URL}
+              port: 9080
+            initialDelaySeconds: 15
+            timeoutSeconds: 4
+          livenessProbe:
+            httpGet:
+              path: ${APP_LIVENESSPROBE_URL}
+              port: 9080
+            initialDelaySeconds: 15
+            timeoutSeconds: 4
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext: {
+          }
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: ${REPO_GIT}-volume
+          configMap:
+            defaultMode: 420
+            items:
+            - key: application.properties
+              path: application.properties
+            name: ${REPO_GIT}-cm
+    test: false
+    triggers:
+    - type: ConfigChange
+    - imageChangeParams:
+        automatic: true
+        containerNames:
+        - ${REPO_GIT}
+        from:
+          kind: ImageStreamTag
+          name: ${REPO_GIT}:${TAG}
+      type: ImageChange
+parameters:
+- name: PROJECT_ADMIN_USER
+  description: Username utente amministratore del namespace di OpenShift
+  required: true
+- name: PROJECT_REQUESTING_USER
+  description: Username utente che ha richiesto la creazione del namespace di OpenShift
+  required: true
+- name: TFS_TEAMPROJECT
+  description: Team project del TFS a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: SERVIZIO_ICT
+  description: Servizio ICT su catalogOne a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: TFS_AREA
+  description: Area del TFS a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: CODICE_APPLICAZIONE
+  description: Codice applicazione su CatalogOne a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: ENV
+  description: Ambiente di OpenShift dove creare il namespace e dove deployare l'immagine docker
+  required: true
+- name: DOCKER_REGISTRY
+  description: DNS del Docker registry contenente l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: DOCKER_REGISTRY_PORT
+  description: Porta del Docker registry contenente l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: REPO_GIT
+  description: Nome del repository GIT contenente il codice dell'immagine docker da deployare all'interno del namespace di OpenShift (il nome dell'immagine docker viene valorizzato con questo parametro)
+  required: true
+- name: TAG
+  description: Tag dell'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: APP_READINESSPROBE_URL
+  description: Readiness URL dell'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: APP_LIVENESSPROBE_URL
+  description: Liveness URL dell'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true

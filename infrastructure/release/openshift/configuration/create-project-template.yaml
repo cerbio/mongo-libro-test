@@ -1,0 +1,122 @@
+apiVersion: v1
+kind: Template
+metadata:
+  creationTimestamp: null
+  name: create-project-template
+  description: Creazione progetto slim che puo ospitare 6 pod dove ognuno di loro puo avere due container (uno è il sidecar) e puo essere replicato 2 volte
+objects:
+- apiVersion: project.openshift.io/v1
+  kind: Project
+  metadata:
+    creationTimestamp: null
+    labels:
+      tfs-teamproject: ${TFS_TEAMPROJECT}
+      servizio-ict: ${SERVIZIO_ICT}
+      tfs-area: ${TFS_AREA}
+      codice-applicazione: ${CODICE_APPLICAZIONE}
+      env: ${ENV}
+      app: ${REPO_GIT}
+      tag: ${TAG}
+      docker_registry: ${DOCKER_REGISTRY}
+      docker_registry_port: ${DOCKER_REGISTRY_PORT}
+    annotations:
+      openshift.io/display-name: ${TFS_AREA}-${ENV}
+      openshift.io/requester: ${PROJECT_REQUESTING_USER}
+      openshift.io/node-selector: env=${ENV}
+    name: ${TFS_AREA}-${ENV}
+  spec: {
+    }
+  status: {
+    }
+- apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    creationTimestamp: null
+    name: admin
+    namespace: ${TFS_AREA}-${ENV}
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: ClusterRole
+    name: admin
+  subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: ${PROJECT_ADMIN_USER}
+- apiVersion: v1
+  kind: ResourceQuota
+  metadata:
+    creationTimestamp: null
+    name: quota
+    namespace: ${TFS_AREA}-${ENV}
+  spec:
+    hard:
+      limits.cpu: '6'
+      limits.memory: 12Gi
+- apiVersion: v1
+  kind: LimitRange
+  metadata:
+    creationTimestamp: null
+    name: limitrange
+    namespace: ${TFS_AREA}-${ENV}
+  spec:
+    limits:
+    - type: Pod
+      max:
+        cpu: 1000m
+        memory: 2Gi
+      min:
+        cpu: 250m
+        memory: 500Mi
+    - type: Container
+      max:
+        cpu: 1000m
+        memory: 2Gi
+      min:
+        cpu: 250m
+        memory: 500Mi
+      default:
+        cpu: 500m
+        memory: 1Gi
+      defaultRequest:
+        cpu: 250m
+        memory: 500Mi
+parameters:
+- name: PROJECT_ADMIN_USER
+  description: Username utente amministratore del namespace di OpenShift
+  required: true
+- name: PROJECT_REQUESTING_USER
+  description: Username utente che ha richiesto la creazione del namespace di OpenShift
+  required: true
+- name: TFS_TEAMPROJECT
+  description: Team project del TFS a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: SERVIZIO_ICT
+  description: Servizio ICT su catalogOne a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: TFS_AREA
+  description: Area del TFS a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: CODICE_APPLICAZIONE
+  description: Codice applicazione su CatalogOne a cui è collegata l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: ENV
+  description: Ambiente di OpenShift dove creare il namespace e dove deployare l'immagine docker
+  required: true
+- name: DOCKER_REGISTRY
+  description: DNS del Docker registry contenente l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: DOCKER_REGISTRY_PORT
+  description: Porta del Docker registry contenente l'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: REPO_GIT
+  description: Nome del repository GIT contenente il codice dell'immagine docker da deployare all'interno del namespace di OpenShift (il nome dell'immagine docker viene valorizzato con questo parametro)
+  required: true
+- name: TAG
+  description: Tag dell'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: APP_READINESSPROBE_URL
+  description: Readiness URL dell'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true
+- name: APP_LIVENESSPROBE_URL
+  description: Liveness URL dell'immagine docker da deployare all'interno del namespace di OpenShift
+  required: true

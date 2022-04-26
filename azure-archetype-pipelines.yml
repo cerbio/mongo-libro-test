@@ -1,0 +1,83 @@
+trigger: none
+
+pool:
+  name: 'AGENTI-PRODUZIONE'
+  demands:
+  - Agent.OS -equals Linux
+
+variables:
+  ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+    repository: releases
+  ${{ if ne(variables['Build.SourceBranchName'], 'main') }}:
+    repository: prereleases
+
+steps:
+
+- task: gitversion/execute@0
+  name: GitVersionExecute
+  displayName: Calculate Version
+
+- task: Maven@3
+  displayName: 'Create archetype from project'
+  inputs:
+    goals: 'archetype:create-from-project -Drevision=$(fullSemVer)'
+    options: ' --settings /opt/maven/conf/settings.xml'
+    publishJUnitResults: false
+
+- task: CmdLine@2
+  displayName: 'Conform pom with Semantic Versioning and Maven Friendly CI Version'
+  inputs:
+    script: |
+      sed -i 's/\${version}/\${revision}/' pom.xml
+      sed -i 's/version-placeholder/\${version}/' pom.xml
+    workingDirectory: 'target/generated-sources/archetype/src/main/resources/archetype-resources'
+
+- task: DeleteFiles@1
+  displayName: 'Delete pipeline for building archetype from archetype structure'
+  inputs:
+    SourceFolder: 'target/generated-sources/archetype/src/main/resources/archetype-resources'
+    Contents: 'azure-archetype-pipelines.yml'
+
+- task: CopyFiles@2
+  displayName: 'Add gitignore in archetype structure'
+  inputs:
+    Contents: '.gitignore'
+    TargetFolder: 'target/generated-sources/archetype/src/main/resources/archetype-resources'
+    OverWrite: true
+
+- task: CopyFiles@2
+  displayName: 'Add Dockerfile in archetype structure'
+  inputs:
+    SourceFolder: 'infrastructure/common'
+    Contents: 'Dockerfile'
+    TargetFolder: 'target/generated-sources/archetype/src/main/resources/archetype-resources/infrastructure/common'
+
+- task: Maven@3
+  displayName: 'Deploy archetype to Nexus'
+  inputs:
+    mavenPomFile: 'target/generated-sources/archetype/pom.xml'
+    goals: 'deploy -DaltDeploymentRepository=nexus::http://alm-repos.sogei.it:8081/repository/maven-archetypes-$(repository)/'
+    publishJUnitResults: false
+
+- task: SonarQubePrepare@4
+  displayName: 'Prepare analysis on SonarQube'
+  inputs:
+    SonarQube: 'SonarQube prod'
+    scannerMode: 'CLI'
+    configMode: 'manual'
+    cliProjectKey: '$(System.TeamProject)_$(Build.Repository.Name)'
+    cliProjectName: '$(System.TeamProject)_$(Build.Repository.Name)'
+    cliProjectVersion: '0.1-$(Build.BuildId)'
+    cliSources: 'src'
+    extraProperties: |
+      # Additional properties that will be passed to the scanner,
+      # Put one key=value per line, example:
+      sonar.java.binaries= .
+      sonar.links.ci=$(Build.BuildUri)
+      sonar.exclusions='**/test/**'
+
+- task: SonarQubeAnalyze@4
+
+- task: SonarQubePublish@4
+  inputs:
+    pollingTimeoutSec: '300'

@@ -1,0 +1,10 @@
+mode: ContinuousDeployment
+next-version: 1.0.0
+branches:
+  develop:
+    tag: dev
+  release:
+    tag: rel
+ignore:
+  sha: []
+merge-message-formats: {}
